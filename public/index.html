@@ -1,0 +1,92 @@
+ 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=<h2>, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+
+<body>
+  
+    <form id="file-upload-form" class="uploader">
+        <input id="fileInput" type="file" name="file" />
+    </form>
+</body>
+<script src="https://cdn.rawgit.com/Keyang/node-csvtojson/d41f44aa/browser/csvtojson.min.js"></script>
+<script>
+let finalJSON;
+    let arrayData;
+    let header
+    
+    function init() {
+      document.getElementById('fileInput').addEventListener('change', handleFileSelect, false);
+    }
+    
+    function handleFileSelect(event) {
+       
+      const reader = new FileReader()
+      reader.onload = handleFileLoad;
+      console.log(reader.readAsText(event.target.files[0]))
+    }
+    
+    function handleFileLoad(event) {
+        event.preventDefault()
+      console.log(event);
+      header = event.target.result.split("\n")[0].split(',');
+      header = header.map(string => string.replace(/(\r\n|\n|\r)/gm, "") )
+      csv({
+    output: "csv"
+})
+.fromString(event.target.result).then(value=>{
+finalJSON = convertToJson(value)
+  console.log(finalJSON)
+fetch('/contentParser', {
+  method: 'post',
+  headers: {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json'
+    },
+  body: JSON.stringify(convertToJson(value))
+}).then(res => res.json())
+  .then(res => alert(res.status)).catch((error) => {
+  
+})}
+)
+
+
+     
+    }
+
+function convertToJson(data) {
+  let csvList = {};
+  
+
+  const newKeys = header;
+    console.log(newKeys)
+  const convertedJson = data.map((li, index) => {
+    let obj = {};
+   
+    li.forEach((value, i) => {
+        
+      obj[newKeys[i]] = value.trim();
+      
+    });
+    return obj;
+  });
+  convertedJson.shift();
+  console.log(convertedJson);
+  
+
+ 
+  return convertedJson;
+}
+
+
+
+
+    init()
+    </script>
+</html>
