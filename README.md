@@ -80,5 +80,77 @@ public class JGitExample {
             e.printStackTrace();
         }
     }
+}To use a commit ID from a repository and fetch a file using JGit in a Spring Boot application, you can follow these steps:Step-by-Step GuideAdd JGit Dependency: Add JGit to your pom.xml.<dependency>
+  <groupId>org.eclipse.jgit</groupId>
+  <artifactId>org.eclipse.jgit</artifactId>
+  <version>5.13.0.202109080827-r</version>
+</dependency>Create a Service to Handle Git Operations: Create a service (GitService.java) to interact with the Git repository.import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.errors.GitAPIException;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.revwalk.RevWalk;
+import org.eclipse.jgit.treewalk.TreeWalk;
+import org.eclipse.jgit.treewalk.filter.PathFilter;
+import org.springframework.stereotype.Service;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+
+@Service
+public class GitService {
+
+  public void fetchFileFromCommit(String repoPath, String commitId, String filePath, String destinationPath) throws IOException, GitAPIException {
+    try (Repository repository = Git.open(new File(repoPath)).getRepository()) {
+      ObjectId commitObjectId = repository.resolve(commitId);
+      try (RevWalk revWalk = new RevWalk(repository)) {
+        RevCommit commit = revWalk.parseCommit(commitObjectId);
+
+        try (TreeWalk treeWalk = new TreeWalk(repository)) {
+          treeWalk.addTree(commit.getTree());
+          treeWalk.setRecursive(true);
+          treeWalk.setFilter(PathFilter.create(filePath));
+
+          if (!treeWalk.next()) {
+            throw new IllegalStateException("Did not find expected file: " + filePath);
+          }
+
+          ObjectId objectId = treeWalk.getObjectId(0);
+          byte[] fileContent = repository.open(objectId).getBytes();
+
+          Path destinationFilePath = Paths.get(destinationPath);
+          Files.createDirectories(destinationFilePath.getParent());
+          Files.write(destinationFilePath, fileContent);
+        }
+      }
+    }
+  }
+}Create a Controller to Trigger the File Fetch: Create a controller (GitController.java) to provide an endpoint to trigger the file fetch.import org.eclipse.jgit.api.errors.GitAPIException;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.io.IOException;
+
+@RestController
+public class GitController {
+
+  @Autowired
+  private GitService gitService;
+
+  @GetMapping("/fetch-file")
+  public String fetchFile(@RequestParam String repoPath, @RequestParam String commitId, @RequestParam String filePath, @RequestParam String destinationPath) {
+    try {
+      gitService.fetchFileFromCommit(repoPath, commitId, filePath, destinationPath);
+      return "File fetched successfully";
+    } catch (IOException | GitAPIException e) {
+      e.printStackTrace();
+      return "Error fetching file: " + e.getMessage();
+    }
+  }
 }
 
