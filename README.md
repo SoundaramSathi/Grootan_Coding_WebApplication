@@ -153,4 +153,675 @@ public class GitController {
     }
   }
 }
+### Spring Boot Application for Given Schema
+
+Let's create the Spring Boot application with entities, services, controllers, and examples of input and output for each table using Postman.
+
+#### 1. Entities
+
+##### Page Entity
+
+```java
+import javax.persistence.*;
+import java.util.Set;
+
+@Entity
+public class Page {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    private String name;
+
+    @OneToOne(mappedBy = "page", cascade = CascadeType.ALL)
+    private Script script;
+
+    @OneToMany(mappedBy = "homePage", cascade = CascadeType.ALL)
+    private Set<CommitDetails> commitDetails;
+
+    // Getters and setters
+}
+```
+
+##### Script Entity
+
+```java
+import javax.persistence.*;
+import java.util.Set;
+
+@Entity
+public class Script {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    private String scriptName;
+    private String gitCommitId;
+    private String desc;
+
+    @OneToOne
+    @JoinColumn(name = "page_id")
+    private Page page;
+
+    @OneToMany(mappedBy = "script", cascade = CascadeType.ALL)
+    private Set<ScriptDetails> scriptDetails;
+
+    @OneToMany(mappedBy = "script", cascade = CascadeType.ALL)
+    private Set<Dashboard> dashboards;
+
+    // Getters and setters
+}
+```
+
+##### CommitDetails Entity
+
+```java
+import javax.persistence.*;
+
+@Entity
+public class CommitDetails {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    private String htmlName;
+    private String newGitCommitId;
+
+    @ManyToOne
+    @JoinColumn(name = "home_page_id")
+    private Page homePage;
+
+    // Getters and setters
+}
+```
+
+##### ScriptDetails Entity
+
+```java
+import javax.persistence.*;
+
+@Entity
+public class ScriptDetails {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    private String htmlName;
+    private String gitCommitId;
+    private String desc;
+
+    @ManyToOne
+    @JoinColumn(name = "script_id")
+    private Script script;
+
+    // Getters and setters
+}
+```
+
+##### Dashboard Entity
+
+```java
+import javax.persistence.*;
+
+@Entity
+public class Dashboard {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    private String oldCommitId;
+    private String htmlName;
+    private String newCommitId;
+
+    @ManyToOne
+    @JoinColumn(name = "script_id")
+    private Script script;
+
+    // Getters and setters
+}
+```
+
+#### 2. Repositories
+
+##### PageRepository
+
+```java
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface PageRepository extends JpaRepository<Page, Long> {
+}
+```
+
+##### ScriptRepository
+
+```java
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface ScriptRepository extends JpaRepository<Script, Long> {
+}
+```
+
+##### CommitDetailsRepository
+
+```java
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface CommitDetailsRepository extends JpaRepository<CommitDetails, Long> {
+}
+```
+
+##### ScriptDetailsRepository
+
+```java
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface ScriptDetailsRepository extends JpaRepository<ScriptDetails, Long> {
+}
+```
+
+##### DashboardRepository
+
+```java
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface DashboardRepository extends JpaRepository<Dashboard, Long> {
+}
+```
+
+#### 3. Services
+
+##### PageService
+
+```java
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import java.util.List;
+
+@Service
+public class PageService {
+    @Autowired
+    private PageRepository pageRepository;
+
+    public List<Page> findAll() {
+        return pageRepository.findAll();
+    }
+
+    public Page findById(Long id) {
+        return pageRepository.findById(id).orElse(null);
+    }
+
+    public Page save(Page page) {
+        return pageRepository.save(page);
+    }
+
+    public void deleteById(Long id) {
+        pageRepository.deleteById(id);
+    }
+}
+```
+
+##### ScriptService
+
+```java
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import java.util.List;
+
+@Service
+public class ScriptService {
+    @Autowired
+    private ScriptRepository scriptRepository;
+
+    public List<Script> findAll() {
+        return scriptRepository.findAll();
+    }
+
+    public Script findById(Long id) {
+        return scriptRepository.findById(id).orElse(null);
+    }
+
+    public Script save(Script script) {
+        return scriptRepository.save(script);
+    }
+
+    public void deleteById(Long id) {
+        scriptRepository.deleteById(id);
+    }
+}
+```
+
+##### CommitDetailsService
+
+```java
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import java.util.List;
+
+@Service
+public class CommitDetailsService {
+    @Autowired
+    private CommitDetailsRepository commitDetailsRepository;
+
+    public List<CommitDetails> findAll() {
+        return commitDetailsRepository.findAll();
+    }
+
+    public CommitDetails findById(Long id) {
+        return commitDetailsRepository.findById(id).orElse(null);
+    }
+
+    public CommitDetails save(CommitDetails commitDetails) {
+        return commitDetailsRepository.save(commitDetails);
+    }
+
+    public void deleteById(Long id) {
+        commitDetailsRepository.deleteById(id);
+    }
+}
+```
+
+##### ScriptDetailsService
+
+```java
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import java.util.List;
+
+@Service
+public class ScriptDetailsService {
+    @Autowired
+    private ScriptDetailsRepository scriptDetailsRepository;
+
+    public List<ScriptDetails> findAll() {
+        return scriptDetailsRepository.findAll();
+    }
+
+    public ScriptDetails findById(Long id) {
+        return scriptDetailsRepository.findById(id).orElse(null);
+    }
+
+    public ScriptDetails save(ScriptDetails scriptDetails) {
+        return scriptDetailsRepository.save(scriptDetails);
+    }
+
+    public void deleteById(Long id) {
+        scriptDetailsRepository.deleteById(id);
+    }
+}
+```
+
+##### DashboardService
+
+```java
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import java.util.List;
+
+@Service
+public class DashboardService {
+    @Autowired
+    private DashboardRepository dashboardRepository;
+
+    public List<Dashboard> findAll() {
+        return dashboardRepository.findAll();
+    }
+
+    public Dashboard findById(Long id) {
+        return dashboardRepository.findById(id).orElse(null);
+    }
+
+    public Dashboard save(Dashboard dashboard) {
+        return dashboardRepository.save(dashboard);
+    }
+
+    public void deleteById(Long id) {
+        dashboardRepository.deleteById(id);
+    }
+}
+```
+
+#### 4. Controllers
+
+##### PageController
+
+```java
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/pages")
+public class PageController {
+    @Autowired
+    private PageService pageService;
+
+    @GetMapping
+    public List<Page> findAll() {
+        return pageService.findAll();
+    }
+
+    @GetMapping("/{id}")
+    public Page findById(@PathVariable Long id) {
+        return pageService.findById(id);
+    }
+
+    @PostMapping
+    public Page save(@RequestBody Page page) {
+        return pageService.save(page);
+    }
+
+    @DeleteMapping("/{id}")
+    public void deleteById(@PathVariable Long id) {
+        pageService.deleteById(id);
+    }
+}
+```
+
+##### ScriptController
+
+```java
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/scripts")
+public class ScriptController {
+    @Autowired
+    private ScriptService scriptService;
+
+    @GetMapping
+    public List<Script> findAll() {
+        return scriptService.findAll();
+    }
+
+    @GetMapping("/{id}")
+    public Script findById(@PathVariable Long id) {
+        return scriptService.findById(id);
+    }
+
+    @PostMapping
+    public Script save(@RequestBody Script script) {
+        return scriptService.save(script);
+    }
+
+    @DeleteMapping("/{id}")
+    public void deleteById(@PathVariable Long id) {
+        scriptService.deleteById(id);
+    }
+}
+```
+
+##### CommitDetailsController
+
+```java
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/commitdetails")
+public class CommitDetailsController {
+    @Autowired
+    private CommitDetailsService commitDetailsService;
+
+    @GetMapping
+    public List<CommitDetails> findAll() {
+        return commitDetailsService.findAll();
+    }
+
+    @GetMapping("/{id}")
+    public CommitDetails findById(@PathVariable Long id) {
+        return commitDetailsService.findById(id);
+    }
+
+    @PostMapping
+    public CommitDetails save(@RequestBody CommitDetails commitDetails) {
+        return commitDetailsService.save(commitDetails);
+    }
+
+    @DeleteMapping("/{id}")
+    public void deleteById(@PathVariable Long id) {
+        commitDetailsService.deleteById(id);
+    }
+}
+```
+
+##### ScriptDetailsController
+
+```java
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/scriptdetails")
+public class ScriptDetailsController {
+    @Autowired
+    private ScriptDetailsService scriptDetailsService;
+
+    @GetMapping
+    public List<ScriptDetails> findAll() {
+        return scriptDetailsService.findAll();
+    }
+
+    @GetMapping("/{id}")
+    public ScriptDetails findById(@PathVariable Long id) {
+        return scriptDetailsService.findById(id);
+    }
+
+    @PostMapping
+    public ScriptDetails save(@RequestBody ScriptDetails scriptDetails) {
+        return scriptDetails
+### Controllers (continued)
+
+##### ScriptDetailsController (continued)
+
+```java
+        return scriptDetailsService.save(scriptDetails);
+    }
+
+    @DeleteMapping("/{id}")
+    public void deleteById(@PathVariable Long id) {
+        scriptDetailsService.deleteById(id);
+    }
+}
+```
+
+##### DashboardController
+
+```java
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/dashboard")
+public class DashboardController {
+    @Autowired
+    private DashboardService dashboardService;
+
+    @GetMapping
+    public List<Dashboard> findAll() {
+        return dashboardService.findAll();
+    }
+
+    @GetMapping("/{id}")
+    public Dashboard findById(@PathVariable Long id) {
+        return dashboardService.findById(id);
+    }
+
+    @PostMapping
+    public Dashboard save(@RequestBody Dashboard dashboard) {
+        return dashboardService.save(dashboard);
+    }
+
+    @DeleteMapping("/{id}")
+    public void deleteById(@PathVariable Long id) {
+        dashboardService.deleteById(id);
+    }
+}
+```
+
+### Input and Output in Postman
+
+#### Creating a Page
+
+- **URL:** `http://localhost:8080/pages`
+- **Method:** POST
+- **Request Body:**
+
+  ```json
+  {
+      "name": "HomePage"
+  }
+  ```
+
+- **Response Body:**
+
+  ```json
+  {
+      "id": 1,
+      "name": "HomePage",
+      "script": null,
+      "commitDetails": []
+  }
+  ```
+
+#### Creating a Script
+
+- **URL:** `http://localhost:8080/scripts`
+- **Method:** POST
+- **Request Body:**
+
+  ```json
+  {
+      "scriptName": "Script1",
+      "gitCommitId": "commit123",
+      "desc": "Script for HomePage",
+      "page": {
+          "id": 1
+      }
+  }
+  ```
+
+- **Response Body:**
+
+  ```json
+  {
+      "id": 1,
+      "scriptName": "Script1",
+      "gitCommitId": "commit123",
+      "desc": "Script for HomePage",
+      "page": {
+          "id": 1,
+          "name": "HomePage"
+      },
+      "scriptDetails": [],
+      "dashboards": []
+  }
+  ```
+
+#### Creating a CommitDetail
+
+- **URL:** `http://localhost:8080/commitdetails`
+- **Method:** POST
+- **Request Body:**
+
+  ```json
+  {
+      "htmlName": "index.html",
+      "newGitCommitId": "commit123",
+      "homePage": {
+          "id": 1
+      }
+  }
+  ```
+
+- **Response Body:**
+
+  ```json
+  {
+      "id": 1,
+      "htmlName": "index.html",
+      "newGitCommitId": "commit123",
+      "homePage": {
+          "id": 1,
+          "name": "HomePage"
+      }
+  }
+  ```
+
+#### Creating a ScriptDetail
+
+- **URL:** `http://localhost:8080/scriptdetails`
+- **Method:** POST
+- **Request Body:**
+
+  ```json
+  {
+      "htmlName": "index.html",
+      "gitCommitId": "commit123",
+      "desc": "Initial commit",
+      "script": {
+          "id": 1
+      }
+  }
+  ```
+
+- **Response Body:**
+
+  ```json
+  {
+      "id": 1,
+      "htmlName": "index.html",
+      "gitCommitId": "commit123",
+      "desc": "Initial commit",
+      "script": {
+          "id": 1,
+          "scriptName": "Script1"
+      }
+  }
+  ```
+
+#### Creating a Dashboard Entry
+
+- **URL:** `http://localhost:8080/dashboard`
+- **Method:** POST
+- **Request Body:**
+
+  ```json
+  {
+      "oldCommitId": "commit122",
+      "htmlName": "index.html",
+      "newCommitId": "commit123",
+      "script": {
+          "id": 1
+      }
+  }
+  ```
+
+- **Response Body:**
+
+  ```json
+  {
+      "id": 1,
+      "oldCommitId": "commit122",
+      "htmlName": "index.html",
+      "newCommitId": "commit123",
+      "script": {
+          "id": 1,
+          "scriptName": "Script1"
+      }
+  }
+  ```
+
+### Summary
+
+This setup provides a complete Spring Boot application with five relational tables (`pages`, `script`, `commitdetails`, `scriptdetails`, and `dashboard`) and implements the corresponding entities, repositories, services, and controllers. The provided examples show how to create entries in these tables using Postman.
+
+You can use the provided controllers to perform CRUD operations on each entity, and the services and repositories ensure that these operations are properly handled. The `OneToOne` and `OneToMany` relationships are established in the entities, ensuring the correct relational mapping in your database.
+
+Feel free to customize the entities, services, and controllers further according to your business logic and requirements.
+
 
