@@ -1275,3 +1275,147 @@ Follow the same steps as before with Postman:
 - Use Postman to make a `GET` request to `/fetch-file` with `commitId` and `filePath` as query parameters.
 
 This approach should correctly fetch and display the file contents.
+To fetch a file from a remote Git repository using a commit ID and display its contents in the console using Spring Boot, you need to:
+
+1. Clone the repository.
+2. Check out the specific commit.
+3. Retrieve the file from that commit.
+4. Print the file contents to the console.
+
+Here's a complete Spring Boot example to achieve this:
+
+### 1. **Add JGit Dependency**
+
+Ensure your `pom.xml` includes the JGit dependency:
+
+```xml
+<dependency>
+    <groupId>org.eclipse.jgit</groupId>
+    <artifactId>org.eclipse.jgit</artifactId>
+    <version>6.3.0.202306190621-r</version>
+</dependency>
+```
+
+### 2. **Create the Git Service**
+
+Create a service class that handles the interaction with the remote Git repository:
+
+```java
+package com.example.demo.service;
+
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.errors.GitAPIException;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.objects.ObjectLoader;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.treewalk.TreeWalk;
+import org.springframework.stereotype.Service;
+
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Scanner;
+
+@Service
+public class GitService {
+
+    private static final String REMOTE_REPO_URL = "https://github.com/yourusername/yourrepository.git"; // Replace with your remote repo URL
+    private static final String REMOTE_USERNAME = "your-username"; // Replace with your username
+    private static final String REMOTE_PASSWORD = "your-password"; // Replace with your password or token
+
+    public void printFileContents(String commitId, String filePath) {
+        try (Git git = Git.cloneRepository()
+                .setURI(REMOTE_REPO_URL)
+                .setCredentialsProvider(new UsernamePasswordCredentialsProvider(REMOTE_USERNAME, REMOTE_PASSWORD))
+                .setDirectory(new java.io.File("/tmp/temporary-repo")) // Temporary directory
+                .call();
+             Repository repository = git.getRepository()) {
+
+            ObjectId commitIdObj = repository.resolve(commitId);
+            RevCommit commit = git.log().add(commitIdObj).call().iterator().next();
+
+            try (TreeWalk treeWalk = new TreeWalk(repository)) {
+                treeWalk.addTree(commit.getTree());
+                treeWalk.setRecursive(true);
+
+                while (treeWalk.next()) {
+                    if (treeWalk.getPathString().equals(filePath)) {
+                        ObjectId objectId = treeWalk.getObjectId(0);
+                        ObjectLoader loader = repository.open(objectId);
+                        try (InputStream stream = new ByteArrayInputStream(loader.getBytes())) {
+                            Scanner scanner = new Scanner(stream, StandardCharsets.UTF_8.name());
+                            while (scanner.hasNextLine()) {
+                                System.out.println(scanner.nextLine());
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+        } catch (IOException | GitAPIException e) {
+            e.printStackTrace();
+        } finally {
+            // Clean up the temporary directory
+            deleteDirectory(new java.io.File("/tmp/temporary-repo"));
+        }
+    }
+
+    private void deleteDirectory(java.io.File directory) throws IOException {
+        if (directory.isDirectory()) {
+            java.io.File[] files = directory.listFiles();
+            if (files != null) {
+                for (java.io.File file : files) {
+                    deleteDirectory(file);
+                }
+            }
+        }
+        directory.delete();
+    }
+}
+```
+
+### 3. **Create the Controller**
+
+Create a controller to expose an endpoint for fetching the file contents:
+
+```java
+package com.example.demo.controller;
+
+import com.example.demo.service.GitService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class GitController {
+
+    @Autowired
+    private GitService gitService;
+
+    @GetMapping("/fetch-file")
+    public void fetchFile(@RequestParam String commitId, @RequestParam String filePath) {
+        gitService.printFileContents(commitId, filePath);
+    }
+}
+```
+
+### 4. **Run and Test**
+
+1. **Start your Spring Boot application**.
+2. **Open Postman** or your browser.
+3. **Make a GET request**:
+   ```
+   http://localhost:8080/fetch-file?commitId=<commitId>&filePath=<filePath>
+   ```
+   Replace `<commitId>` and `<filePath>` with your actual commit ID and file path.
+
+### Important Notes
+
+- **Security**: Never hard-code sensitive information like credentials directly in the source code. Use environment variables or secure vaults in a production environment.
+- **Resource Management**: Cloning and managing temporary directories should be handled carefully to avoid resource leaks.
+- **Error Handling**: Ensure adequate error handling to catch issues related to repository access, file retrieval, or network problems.
+
+This setup clones the remote repository temporarily, retrieves the file content from the specified commit, and prints it to the console.
