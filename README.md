@@ -1,4 +1,4 @@
-# Grootan_Coding_WebApplication
+6# Grootan_Coding_WebApplication
 Created for webapplication development
 
 This project is developed to design webapplication to upload csv file of more than 1Lakh records with header values and tried to hash the password field. But, hashing the password field is having challenges in the given span of time.
@@ -1025,4 +1025,84 @@ http://localhost:8080/git/fetch-file?repoPath=https://github.com/n320ajay/Cogniz
 
 By following these steps, the Spring Boot application will fetch the specified file from the Git repository at the given commit and print its contents to the console. If there are any issues, please provide the error details for further assistance.
 
+It looks like there's an issue with the use of the `ObjectReader` in the `GitService` code. The `ObjectReader` class in JGit does not have a method named `copyTo(ByteArrayOutputStream, ObjectId)`.
 
+To correct this, you need to use `ObjectReader.open` and `ObjectLoader` to read the contents of the file. Here’s the updated `GitService` implementation:
+
+### Updated GitService.java
+
+```java
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.errors.GitAPIException;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.ObjectLoader;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.revwalk.RevWalk;
+import org.eclipse.jgit.treewalk.TreeWalk;
+import org.springframework.stereotype.Service;
+
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+
+@Service
+public class GitService implements IGitService {
+
+    @Override
+    public String fetchFileFromCommit(String repoPath, String commitId, String filePath) throws IOException, GitAPIException {
+        File localRepoDir = Files.createTempDirectory("tempRepo").toFile();
+        String fileContents = "";
+
+        try (Git git = Git.cloneRepository().setURI(repoPath).setDirectory(localRepoDir).call()) {
+
+            RevWalk walk = new RevWalk(git.getRepository());
+            RevCommit commit = walk.parseCommit(git.getRepository().resolve(commitId));
+
+            try (TreeWalk treeWalk = TreeWalk.forPath(git.getRepository(), filePath, commit.getTree())) {
+                if (treeWalk == null) {
+                    throw new IOException("File not found in the specified commit");
+                }
+
+                ObjectId objectId = treeWalk.getObjectId(0);
+                ObjectLoader loader = git.getRepository().open(objectId);
+
+                try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+                    loader.copyTo(out);
+                    fileContents = new String(out.toByteArray(), "UTF-8");
+                }
+            }
+        } finally {
+            if (localRepoDir.exists()) {
+                deleteDirectory(localRepoDir);
+            }
+        }
+
+        return fileContents;
+    }
+
+    private void deleteDirectory(File directory) throws IOException {
+        if (directory.isDirectory()) {
+            File[] files = directory.listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    deleteDirectory(file);
+                }
+            }
+        }
+        Files.delete(directory.toPath());
+    }
+}
+```
+
+### Explanation
+
+- **`ObjectId objectId = treeWalk.getObjectId(0);`**: Retrieves the object ID for the file from the tree walk.
+- **`ObjectLoader loader = git.getRepository().open(objectId);`**: Opens the object loader for the specified object ID.
+- **`loader.copyTo(out);`**: Reads the contents of the file into the `ByteArrayOutputStream`.
+
+### Testing with Postman
+
+You can test this implementation with Postman as described before:
+
+1. **
