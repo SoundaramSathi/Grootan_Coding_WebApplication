@@ -823,5 +823,206 @@ This setup provides a complete Spring Boot application with five relational tabl
 You can use the provided controllers to perform CRUD operations on each entity, and the services and repositories ensure that these operations are properly handled. The `OneToOne` and `OneToMany` relationships are established in the entities, ensuring the correct relational mapping in your database.
 
 Feel free to customize the entities, services, and controllers further according to your business logic and requirements.
+Certainly! Below is the complete Spring Boot code to fetch a file from a Git repository and display its contents in the console using the commit ID. This example uses the JGit library to interact with the Git repository.
+
+### Directory Structure
+
+Ensure your project structure looks like this:
+
+```
+src/
+└── main/
+    ├── java/
+    │   └── com/
+    │       └── example/
+    │           ├── GitFetchApplication.java
+    │           ├── controller/
+    │           │   └── GitController.java
+    │           ├── service/
+    │           │   ├── GitService.java
+    │           │   └── IGitService.java
+    └── resources/
+        └── application.properties
+```
+
+### GitFetchApplication.java
+
+This is your main Spring Boot application class.
+
+```java
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class GitFetchApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(GitFetchApplication.class, args);
+    }
+}
+```
+
+### IGitService.java
+
+This is the service interface.
+
+```java
+import org.eclipse.jgit.api.errors.GitAPIException;
+
+import java.io.IOException;
+
+public interface IGitService {
+    String fetchFileFromCommit(String repoPath, String commitId, String filePath) throws IOException, GitAPIException;
+}
+```
+
+### GitService.java
+
+This is the service implementation that handles the logic for fetching files from the Git repository.
+
+```java
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.errors.GitAPIException;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.revwalk.RevWalk;
+import org.eclipse.jgit.treewalk.TreeWalk;
+import org.springframework.stereotype.Service;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+
+@Service
+public class GitService implements IGitService {
+
+    @Override
+    public String fetchFileFromCommit(String repoPath, String commitId, String filePath) throws IOException, GitAPIException {
+        File localRepoDir = Files.createTempDirectory("tempRepo").toFile();
+        String fileContents = "";
+
+        try (Git git = repoPath.startsWith("http") || repoPath.startsWith("git@") ?
+                Git.cloneRepository().setURI(repoPath).setDirectory(localRepoDir).call() :
+                Git.open(new File(repoPath))) {
+
+            RevWalk walk = new RevWalk(git.getRepository());
+            RevCommit commit = walk.parseCommit(git.getRepository().resolve(commitId));
+
+            try (TreeWalk treeWalk = TreeWalk.forPath(git.getRepository(), filePath, commit.getTree())) {
+                if (treeWalk == null) {
+                    throw new IOException("File not found in the specified commit");
+                }
+
+                try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+                    treeWalk.getObjectReader().copyTo(out, treeWalk.getObjectId(0));
+                    fileContents = new String(out.toByteArray(), "UTF-8");
+                }
+            }
+        } finally {
+            if (localRepoDir.exists()) {
+                deleteDirectory(localRepoDir);
+            }
+        }
+
+        return fileContents;
+    }
+
+    private void deleteDirectory(File directory) throws IOException {
+        if (directory.isDirectory()) {
+            File[] files = directory.listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    deleteDirectory(file);
+                }
+            }
+        }
+        Files.delete(directory.toPath());
+    }
+}
+```
+
+### GitController.java
+
+This is the controller that maps the endpoint for fetching the file.
+
+```java
+import org.eclipse.jgit.api.errors.GitAPIException;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.io.IOException;
+
+@RestController
+@RequestMapping("/git")
+public class GitController {
+
+    @Autowired
+    private IGitService gitService;
+
+    @GetMapping("/fetch-file")
+    public ResponseEntity<String> fetchFile(@RequestParam String repoPath,
+                                            @RequestParam String commitId,
+                                            @RequestParam String filePath) {
+        try {
+            String fileContents = gitService.fetchFileFromCommit(repoPath, commitId, filePath);
+            System.out.println(fileContents);
+            return ResponseEntity.ok(fileContents);
+        } catch (IOException | GitAPIException e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                                 .body("Error fetching file: " + e.getMessage());
+        }
+    }
+}
+```
+
+### application.properties
+
+Ensure your `application.properties` file includes the necessary configurations:
+
+```properties
+server.port=8080
+```
+
+### Testing with Postman
+
+1. **Open Postman:**
+   Open the Postman application.
+
+2. **Create a New Request:**
+   Click on the "New" button and select "Request".
+
+3. **Set the HTTP Method to GET:**
+   In the request builder, set the HTTP method to GET.
+
+4. **Set the URL:**
+   Enter the URL for your endpoint:
+   ```
+   http://localhost:8080/git/fetch-file
+   ```
+
+5. **Add Query Parameters:**
+   In the Params tab, add the following query parameters:
+
+   | Key         | Value                                             |
+   |-------------|---------------------------------------------------|
+   | repoPath    | `/path/to/local/repo` or `https://github.com/user/repo.git` |
+   | commitId    | `abcdef123456`                                    |
+   | filePath    | `src/main/java/com/example/MyFile.java`           |
+
+6. **Send the Request:**
+   Click on the "Send" button to send the request.
+
+### Example Usage
+
+Assume you want to fetch a file from a GitHub repository:
+
+```
+http://localhost:8080/git/fetch-file?repoPath=https://github.com/n320ajay/Cognizant-&commitId=abcdef123456&filePath=src/main/java/com/example/MyFile.java
+```
+
+By following these steps, the Spring Boot application will fetch the specified file from the Git repository at the given commit and print its contents to the console. If there are any issues, please provide the error details for further assistance.
 
 
