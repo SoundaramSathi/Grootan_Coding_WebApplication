@@ -1,4 +1,4 @@
-6# Grootan_Coding_WebApplication
+y6# Grootan_Coding_WebApplication
 Created for webapplication development
 
 This project is developed to design webapplication to upload csv file of more than 1Lakh records with header values and tried to hash the password field. But, hashing the password field is having challenges in the given span of time.
@@ -1106,3 +1106,92 @@ public class GitService implements IGitService {
 You can test this implementation with Postman as described before:
 
 1. **
+To fetch a file from a Git repository using a commit ID and display its contents in a Spring Boot application, you can use the JGit library. JGit is a Java library for working with Git repositories. Below is a step-by-step guide with sample code to achieve this.
+
+1. **Add JGit Dependency**: First, add the JGit dependency to your `pom.xml` file if you're using Maven:
+
+    ```xml
+    <dependency>
+        <groupId>org.eclipse.jgit</groupId>
+        <artifactId>org.eclipse.jgit</artifactId>
+        <version>6.3.0.202306190621-r</version>
+    </dependency>
+    ```
+
+2. **Fetch File from Git Repository**: Use the following Spring Boot service to fetch a file from a Git repository based on a commit ID and print its contents to the console.
+
+    ```java
+    package com.example.demo.service;
+
+    import org.eclipse.jgit.api.Git;
+    import org.eclipse.jgit.api.errors.GitAPIException;
+    import org.eclipse.jgit.lib.ObjectId;
+    import org.eclipse.jgit.revwalk.RevCommit;
+    import org.eclipse.jgit.treewalk.TreeWalk;
+    import org.springframework.stereotype.Service;
+
+    import java.io.IOException;
+    import java.io.InputStream;
+    import java.nio.charset.StandardCharsets;
+    import java.util.Scanner;
+
+    @Service
+    public class GitService {
+
+        private static final String REPO_PATH = "/path/to/your/repo"; // Replace with the path to your local repo
+
+        public void printFileContents(String commitId, String filePath) {
+            try (Git git = Git.open(new java.io.File(REPO_PATH))) {
+                ObjectId commitIdObj = git.getRepository().resolve(commitId);
+                RevCommit commit = git.log().add(commitIdObj).call().iterator().next();
+
+                try (TreeWalk treeWalk = new TreeWalk(git.getRepository())) {
+                    treeWalk.addTree(commit.getTree());
+                    treeWalk.setRecursive(true);
+
+                    while (treeWalk.next()) {
+                        if (treeWalk.getPathString().equals(filePath)) {
+                            try (InputStream stream = git.getRepository().open(treeWalk.getObjectId(0)).getInputStream()) {
+                                Scanner scanner = new Scanner(stream, StandardCharsets.UTF_8.name());
+                                while (scanner.hasNextLine()) {
+                                    System.out.println(scanner.nextLine());
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+            } catch (IOException | GitAPIException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+    ```
+
+3. **Usage in a Controller**: You can use this service in a Spring Boot controller to expose an endpoint or use it directly in your application logic.
+
+    ```java
+    package com.example.demo.controller;
+
+    import com.example.demo.service.GitService;
+    import org.springframework.beans.factory.annotation.Autowired;
+    import org.springframework.web.bind.annotation.GetMapping;
+    import org.springframework.web.bind.annotation.RequestParam;
+    import org.springframework.web.bind.annotation.RestController;
+
+    @RestController
+    public class GitController {
+
+        @Autowired
+        private GitService gitService;
+
+        @GetMapping("/fetch-file")
+        public void fetchFile(@RequestParam String commitId, @RequestParam String filePath) {
+            gitService.printFileContents(commitId, filePath);
+        }
+    }
+    ```
+
+4. **Run Your Application**: Start your Spring Boot application and navigate to `/fetch-file?commitId=<your_commit_id>&filePath=<your_file_path>` to fetch and print the file contents.
+
+Make sure you replace `/path/to/your/repo` with the actual path to your local Git repository and adjust the commit ID and file path parameters as needed.
