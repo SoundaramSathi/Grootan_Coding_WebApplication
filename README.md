@@ -1,4 +1,4 @@
-y6# Grootan_Coding_WebApplication
+⁶y6# Grootan_Coding_WebApplication
 Created for webapplication development
 
 This project is developed to design webapplication to upload csv file of more than 1Lakh records with header values and tried to hash the password field. But, hashing the password field is having challenges in the given span of time.
@@ -1195,3 +1195,83 @@ To fetch a file from a Git repository using a commit ID and display its contents
 4. **Run Your Application**: Start your Spring Boot application and navigate to `/fetch-file?commitId=<your_commit_id>&filePath=<your_file_path>` to fetch and print the file contents.
 
 Make sure you replace `/path/to/your/repo` with the actual path to your local Git repository and adjust the commit ID and file path parameters as needed.
+It looks like you're encountering an issue with the `getInputStream()` method on an `ObjectLoader`. In JGit, `ObjectLoader` is an abstract class, and the method to retrieve the content of the object depends on the specific type of the object. 
+
+Here's a revised approach to fetch and read file contents from a Git repository using JGit:
+
+### Updated Approach
+
+1. **Add JGit Dependency**: Ensure you have the JGit dependency in your `pom.xml`.
+
+2. **Fetch File from Git Repository**: Update the `printFileContents` method to use `ObjectLoader` correctly.
+
+Here's the revised code:
+
+```java
+package com.example.demo.service;
+
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.errors.GitAPIException;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.objects.ObjectLoader;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.treewalk.TreeWalk;
+import org.springframework.stereotype.Service;
+
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Scanner;
+
+@Service
+public class GitService {
+
+    private static final String REPO_PATH = "/path/to/your/repo"; // Replace with the path to your local repo
+
+    public void printFileContents(String commitId, String filePath) {
+        try (Git git = Git.open(new java.io.File(REPO_PATH));
+             Repository repository = git.getRepository()) {
+
+            ObjectId commitIdObj = repository.resolve(commitId);
+            RevCommit commit = git.log().add(commitIdObj).call().iterator().next();
+
+            try (TreeWalk treeWalk = new TreeWalk(repository)) {
+                treeWalk.addTree(commit.getTree());
+                treeWalk.setRecursive(true);
+
+                while (treeWalk.next()) {
+                    if (treeWalk.getPathString().equals(filePath)) {
+                        ObjectId objectId = treeWalk.getObjectId(0);
+                        ObjectLoader loader = repository.open(objectId);
+                        try (InputStream stream = new ByteArrayInputStream(loader.getBytes())) {
+                            Scanner scanner = new Scanner(stream, StandardCharsets.UTF_8.name());
+                            while (scanner.hasNextLine()) {
+                                System.out.println(scanner.nextLine());
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+        } catch (IOException | GitAPIException e) {
+            e.printStackTrace();
+        }
+    }
+}
+```
+
+### Explanation
+
+- **ObjectLoader**: Use `loader.getBytes()` to get the byte array of the file content.
+- **ByteArrayInputStream**: Create an `InputStream` from the byte array to read the file content.
+
+### Running the Application
+
+Follow the same steps as before with Postman:
+
+- Start your Spring Boot application.
+- Use Postman to make a `GET` request to `/fetch-file` with `commitId` and `filePath` as query parameters.
+
+This approach should correctly fetch and display the file contents.
