@@ -1784,3 +1784,139 @@ Here are a few more methods to consider for fetching files from a Git repository
     ```
 
 These methods offer various ways to interact with Git repositories, depending on your needs and the specific Git hosting service you are using.
+To modify your existing code so that it stores the file content in a folder instead of printing it, you need to update the `printFileContents` method to write the content to a file. Below is the revised code:
+
+### `GitService.java`
+```java
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.errors.GitAPIException;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.ObjectLoader;
+import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.treewalk.TreeWalk;
+import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
+
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Scanner;
+
+public class GitService {
+
+    private static final String REMOTE_REPO_URL = "https://github.com/Somutech/Angular-Frontend.git"; // Replace with your repository URL
+    private static final String REMOTE_USERNAME = "Somutech"; // Replace with your username
+    private static final String REMOTE_PASSWORD = "S706m0u1@4556"; // Replace with your password or token
+
+    public void storeFileContents(String commitId, String filePath, String outputDir) {
+        try (Git git = Git.cloneRepository()
+                .setURI(REMOTE_REPO_URL)
+                .setCredentialsProvider(new UsernamePasswordCredentialsProvider(REMOTE_USERNAME, REMOTE_PASSWORD))
+                .setDirectory(new File("C:\\Users\\sous\\Documents\\New folder")) // Temporary directory
+                .call()) {
+
+            Repository repository = git.getRepository();
+            System.out.println("** Cloning repository... **");
+
+            ObjectId commitIdObj = repository.resolve(commitId);
+
+            if (commitIdObj == null) {
+                System.out.println("Commit ID not found: " + commitId);
+                return;
+            }
+
+            System.out.println("Commit ID found: " + commitId);
+
+            RevCommit commit = git.log().add(commitIdObj).call().iterator().next();
+            System.out.println("Commit found: " + commit.getName());
+
+            try (TreeWalk treeWalk = new TreeWalk(repository)) {
+                treeWalk.addTree(commit.getTree());
+                treeWalk.setRecursive(true);
+
+                boolean fileFound = false;
+
+                while (treeWalk.next()) {
+                    if (treeWalk.getPathString().equals(filePath)) {
+                        fileFound = true;
+
+                        ObjectId objectId = treeWalk.getObjectId(0);
+                        ObjectLoader loader = repository.open(objectId);
+
+                        try (InputStream stream = new ByteArrayInputStream(loader.getBytes());
+                             FileOutputStream outputStream = new FileOutputStream(new File(outputDir, new File(filePath).getName()))) {
+                            byte[] buffer = new byte[1024];
+                            int length;
+                            while ((length = stream.read(buffer)) != -1) {
+                                outputStream.write(buffer, 0, length);
+                            }
+                        }
+
+                        break;
+                    }
+                }
+
+                if (!fileFound) {
+                    System.out.println("File not found: " + filePath);
+                }
+            }
+
+        } catch (IOException | GitAPIException e) {
+            e.printStackTrace();
+        } finally {
+            // Clean up the temporary directory
+            try {
+                deleteDirectory(new File("C:\\Users\\sous\\Documents\\New folder"));
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private void deleteDirectory(File directory) throws IOException {
+        if (directory.isDirectory()) {
+            File[] files = directory.listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    deleteDirectory(file);
+                }
+            }
+        }
+        directory.delete();
+    }
+}
+```
+
+### `JgitController.java`
+```java
+package com.example.demo;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class JgitController {
+
+    @Autowired
+    private GitService gitService;
+
+    @GetMapping("/fetch-file")
+    public void fetchFile(@RequestParam String commitId, @RequestParam String filePath, @RequestParam String outputDir) {
+        gitService.storeFileContents(commitId, filePath, outputDir);
+    }
+}
+```
+
+### Changes Made:
+1. Renamed the class to `GitService` for consistency.
+2. Changed the method `printFileContents` to `storeFileContents` to reflect its new functionality.
+3. Added `outputDir` parameter to specify where to store the file.
+4. Used `FileOutputStream` to write the file content to the specified directory.
+5. Updated the controller to accept `outputDir` as a request parameter.
+
+This will store the file content in the specified directory instead of printing it to the console. Make sure to replace the placeholders with your actual values and test the application thoroughly.
