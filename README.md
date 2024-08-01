@@ -2664,3 +2664,215 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
    Verify that the files have been stored in the specified output directory, each file prefixed with its commit ID.
 
 This will fetch all files for each commit ID and store them in the specified output directory without needing to specify individual file paths.
+To print the file path in the repository instead of just the file name, you need to ensure that you are capturing and printing the correct path during the traversal of the commit tree.
+
+Here's the revised code to fetch the file from the Git remote repository using a commit ID, store it in a folder, and print the full file path in the repository along with a success message and the file location in the console:
+
+### Entity Class: `Dashboard`
+
+```java
+import javax.persistence.Entity;
+import javax.persistence.GeneratedValue;
+import javax.persistence.GenerationType;
+import javax.persistence.Id;
+import javax.persistence.JoinColumn;
+import javax.persistence.ManyToOne;
+
+@Entity
+public class Dashboard {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private String oldCommitId;
+    private String htmlName;
+    private String newCommitId;
+
+    @ManyToOne
+    @JoinColumn(name = "script_id")
+    private Script script;
+
+    // Getters and Setters
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public String getOldCommitId() {
+        return oldCommitId;
+    }
+
+    public void setOldCommitId(String oldCommitId) {
+        this.oldCommitId = oldCommitId;
+    }
+
+    public String getHtmlName() {
+        return htmlName;
+    }
+
+    public void setHtmlName(String htmlName) {
+        this.htmlName = htmlName;
+    }
+
+    public String getNewCommitId() {
+        return newCommitId;
+    }
+
+    public void setNewCommitId(String newCommitId) {
+        this.newCommitId = newCommitId;
+    }
+
+    public Script getScript() {
+        return script;
+    }
+
+    public void setScript(Script script) {
+        this.script = script;
+    }
+}
+```
+
+### Service Class: `JgitService`
+
+```java
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.errors.GitAPIException;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.ObjectLoader;
+import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
+import org.eclipse.jgit.treewalk.TreeWalk;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import com.gen.ai.entity.Dashboard;
+import com.gen.ai.repository.DashboardRepository;
+
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.List;
+
+@Service
+public class JgitService {
+
+    private static final String REMOTE_REPO_URL = "https://github.com/Somutech/Angular-Frontend.git";
+    private static final String REMOTE_USERNAME = "Somutech";
+    private static final String REMOTE_PASSWORD = "5706m0u1@4556";
+
+    @Autowired
+    private DashboardRepository dashboardRepository;
+
+    public void storeFilesFromCommits(String outputDir) {
+        List<Dashboard> dashboards = dashboardRepository.findAll();
+
+        for (Dashboard dashboard : dashboards) {
+            fetchAndStoreFile(dashboard.getNewCommitId(), dashboard.getHtmlName(), outputDir);
+        }
+    }
+
+    private void fetchAndStoreFile(String commitId, String filePath, String outputDir) {
+        try {
+            // Clone the remote repository
+            Git git = Git.cloneRepository()
+                        .setURI(REMOTE_REPO_URL)
+                        .setCredentialsProvider(new UsernamePasswordCredentialsProvider(REMOTE_USERNAME, REMOTE_PASSWORD))
+                        .call();
+
+            Repository repository = git.getRepository();
+            ObjectId commitIdObj = repository.resolve(commitId);
+
+            if (commitIdObj == null) {
+                System.out.println("Commit ID not found: " + commitId);
+                return;
+            }
+
+            RevCommit commit = git.log().add(commitIdObj).call().iterator().next();
+
+            try (TreeWalk treeWalk = new TreeWalk(repository)) {
+                treeWalk.addTree(commit.getTree());
+                treeWalk.setRecursive(true);
+
+                boolean fileFound = false;
+
+                while (treeWalk.next()) {
+                    if (treeWalk.getPathString().equals(filePath)) {
+                        fileFound = true;
+                        ObjectId objectId = treeWalk.getObjectId(0);
+                        ObjectLoader loader = repository.open(objectId);
+
+                        File outputFile = new File(outputDir, commitId + "_" + new File(filePath).getName());
+                        try (InputStream stream = new ByteArrayInputStream(loader.getBytes());
+                             FileOutputStream outputStream = new FileOutputStream(outputFile)) {
+
+                            byte[] buffer = new byte[1024];
+                            int length;
+                            while ((length = stream.read(buffer)) != -1) {
+                                outputStream.write(buffer, 0, length);
+                            }
+                        }
+                        System.out.println("File saved successfully: " + outputFile.getAbsolutePath());
+                        System.out.println("File path in repository: " + treeWalk.getPathString());
+                        break;
+                    }
+                }
+
+                if (!fileFound) {
+                    System.out.println("File not found: " + filePath);
+                }
+            }
+
+        } catch (GitAPIException | IOException e) {
+            e.printStackTrace();
+        }
+    }
+}
+```
+
+### Repository Interface: `DashboardRepository`
+
+```java
+import org.springframework.data.jpa.repository.JpaRepository;
+import com.gen.ai.entity.Dashboard;
+
+public interface DashboardRepository extends JpaRepository<Dashboard, Long> {
+}
+```
+
+### Controller Class: `JgitController`
+
+```java
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/git")
+public class JgitController {
+
+    @Autowired
+    private JgitService jgitService;
+
+    @GetMapping("/fetchFiles")
+    public void fetchFiles() {
+        String outputDir = "/path/to/your/output/directory";
+        jgitService.storeFilesFromCommits(outputDir);
+    }
+}
+```
+
+### Explanation
+
+1. **Entity Class**: The `Dashboard` entity defines the structure of the database table with fields for commit IDs and file names.
+2. **Service Class**: The `JgitService` class handles the cloning of the repository, fetching files from a specific commit, storing them, and printing the file paths.
+3. **Repository Interface**: The `DashboardRepository` interface extends `JpaRepository` for database operations.
+4. **Controller Class**: The `JgitController` class provides an endpoint to trigger the file fetching and storing process.
+
+Ensure you replace `/path/to/your/output/directory` in the `JgitController` class with the actual path where you want to store the files. This setup should correctly fetch files from the repository, store them locally, and print the file paths in the repository along with the success message and file location in the console.
