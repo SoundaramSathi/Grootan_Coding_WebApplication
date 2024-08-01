@@ -2126,3 +2126,541 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
    Verify that the files have been stored in the specified output directory, each file prefixed with its commit ID.
 
 By following these steps, you can fetch files from a Git repository for multiple commit IDs stored in your database and store them in the specified directory without cloning the entire repository.
+Sure, here's the revised code that does not require specifying a file path and fetches all files for the given commit IDs, storing them in the specified output directory:
+
+### `GitService.java`
+
+```java
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.errors.GitAPIException;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.ObjectLoader;
+import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
+import org.eclipse.jgit.treewalk.TreeWalk;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.List;
+
+@Service
+public class GitService {
+
+    private static final String REMOTE_REPO_URL = "https://github.com/Somutech/Angular-Frontend.git";
+    private static final String REMOTE_USERNAME = "Somutech";
+    private static final String REMOTE_PASSWORD = "S706m0u1@4556";
+
+    @Autowired
+    private DashboardRepository dashboardRepository;
+
+    public void storeFilesFromCommits(String outputDir) {
+        List<Dashboard> dashboards = dashboardRepository.findAll();
+
+        for (Dashboard dashboard : dashboards) {
+            fetchAndStoreFiles(dashboard.getNewCommitId(), outputDir);
+        }
+    }
+
+    private void fetchAndStoreFiles(String commitId, String outputDir) {
+        try {
+            // Initialize a temporary Git repository
+            try (Git git = Git.init().call()) {
+                git.fetch()
+                        .setRemote(REMOTE_REPO_URL)
+                        .setCredentialsProvider(new UsernamePasswordCredentialsProvider(REMOTE_USERNAME, REMOTE_PASSWORD))
+                        .call();
+
+                Repository repository = git.getRepository();
+                ObjectId commitIdObj = repository.resolve(commitId);
+
+                if (commitIdObj == null) {
+                    System.out.println("Commit ID not found: " + commitId);
+                    return;
+                }
+
+                RevCommit commit = git.log().add(commitIdObj).call().iterator().next();
+
+                try (TreeWalk treeWalk = new TreeWalk(repository)) {
+                    treeWalk.addTree(commit.getTree());
+                    treeWalk.setRecursive(true);
+
+                    while (treeWalk.next()) {
+                        ObjectId objectId = treeWalk.getObjectId(0);
+                        ObjectLoader loader = repository.open(objectId);
+
+                        String filePath = treeWalk.getPathString();
+                        File outputFile = new File(outputDir, commitId + "_" + filePath.replace("/", "_"));
+                        outputFile.getParentFile().mkdirs(); // Ensure the directory exists
+
+                        try (InputStream stream = new ByteArrayInputStream(loader.getBytes());
+                             FileOutputStream outputStream = new FileOutputStream(outputFile)) {
+                            byte[] buffer = new byte[1024];
+                            int length;
+                            while ((length = stream.read(buffer)) != -1) {
+                                outputStream.write(buffer, 0, length);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (IOException | GitAPIException e) {
+            e.printStackTrace();
+        }
+    }
+}
+```
+
+### `JgitController.java`
+
+```java
+package com.example.demo;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class JgitController {
+
+    @Autowired
+    private GitService gitService;
+
+    @GetMapping("/fetch-files")
+    public void fetchFiles(@RequestParam String outputDir) {
+        gitService.storeFilesFromCommits(outputDir);
+    }
+}
+```
+
+### `Dashboard.java`
+
+```java
+package com.example.demo;
+
+import javax.persistence.Entity;
+import javax.persistence.GeneratedValue;
+import javax.persistence.GenerationType;
+import javax.persistence.Id;
+import javax.persistence.ManyToOne;
+import javax.persistence.JoinColumn;
+import com.fasterxml.jackson.annotation.JsonBackReference;
+
+@Entity
+public class Dashboard {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private String oldCommitId;
+    private String htmlName;
+    private String newCommitId;
+
+    @ManyToOne
+    @JoinColumn(name="script_id")
+    @JsonBackReference
+    private Script script;
+
+    // Getters and setters
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public String getOldCommitId() {
+        return oldCommitId;
+    }
+
+    public void setOldCommitId(String oldCommitId) {
+        this.oldCommitId = oldCommitId;
+    }
+
+    public String getHtmlName() {
+        return htmlName;
+    }
+
+    public void setHtmlName(String htmlName) {
+        this.htmlName = htmlName;
+    }
+
+    public String getNewCommitId() {
+        return newCommitId;
+    }
+
+    public void setNewCommitId(String newCommitId) {
+        this.newCommitId = newCommitId;
+    }
+
+    public Script getScript() {
+        return script;
+    }
+
+    public void setScript(Script script) {
+        this.script = script;
+    }
+}
+```
+
+### `DashboardRepository.java`
+
+```java
+package com.example.demo;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface DashboardRepository extends JpaRepository<Dashboard, Long> {
+}
+```
+
+### Security Configuration
+
+Ensure the security configuration remains as previously defined to secure the endpoint.
+
+#### `WebSecurityConfig.java`
+
+```java
+package com.example.demo;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.provisioning.InMemoryUserDetailsManager;
+
+@Configuration
+@EnableWebSecurity
+public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+        http
+            .authorizeRequests()
+                .antMatchers("/fetch-files").authenticated()
+                .and()
+            .httpBasic();
+    }
+
+    @Bean
+    @Override
+    public UserDetailsService userDetailsService() {
+        UserDetails user = User.withDefaultPasswordEncoder()
+            .username("user")
+            .password("password")
+            .roles("USER")
+            .build();
+
+        return new InMemoryUserDetailsManager(user);
+    }
+}
+```
+
+### Testing with Postman
+
+1. **Start Your Spring Boot Application**
+   Ensure your Spring Boot application is running.
+
+2. **Open Postman**
+   Open Postman to create a new request.
+
+3. **Create a GET Request**
+   - **Method**: GET
+   - **URL**: `http://localhost:8080/fetch-files`
+
+4. **Add Basic Authentication**
+   - Go to the "Authorization" tab.
+   - Select "Basic Auth" from the Type dropdown.
+   - Enter the username (`user`) and password (`password`) defined in the `WebSecurityConfig`.
+
+5. **Add Query Parameters**
+   Click on the "Params" tab and add the following parameter:
+   - **Key**: `outputDir`, **Value**: `C:\\Users\\sous\\Documents\\OutputFolder`
+
+6. **Send the Request**
+   Click on the "Send" button to execute the request.
+
+7. **Check the Output Directory**
+   Verify that the files have been stored in the specified output directory, each file prefixed with its commit ID.
+
+This will fetch all files for each commit ID and store them in the specified output directory without needing to specify individual file paths.
+Sure, here's the revised code that does not require specifying a file path and fetches all files for the given commit IDs, storing them in the specified output directory:
+
+### `GitService.java`
+
+```java
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.errors.GitAPIException;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.ObjectLoader;
+import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
+import org.eclipse.jgit.treewalk.TreeWalk;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.List;
+
+@Service
+public class GitService {
+
+    private static final String REMOTE_REPO_URL = "https://github.com/Somutech/Angular-Frontend.git";
+    private static final String REMOTE_USERNAME = "Somutech";
+    private static final String REMOTE_PASSWORD = "S706m0u1@4556";
+
+    @Autowired
+    private DashboardRepository dashboardRepository;
+
+    public void storeFilesFromCommits(String outputDir) {
+        List<Dashboard> dashboards = dashboardRepository.findAll();
+
+        for (Dashboard dashboard : dashboards) {
+            fetchAndStoreFiles(dashboard.getNewCommitId(), outputDir);
+        }
+    }
+
+    private void fetchAndStoreFiles(String commitId, String outputDir) {
+        try {
+            // Initialize a temporary Git repository
+            try (Git git = Git.init().call()) {
+                git.fetch()
+                        .setRemote(REMOTE_REPO_URL)
+                        .setCredentialsProvider(new UsernamePasswordCredentialsProvider(REMOTE_USERNAME, REMOTE_PASSWORD))
+                        .call();
+
+                Repository repository = git.getRepository();
+                ObjectId commitIdObj = repository.resolve(commitId);
+
+                if (commitIdObj == null) {
+                    System.out.println("Commit ID not found: " + commitId);
+                    return;
+                }
+
+                RevCommit commit = git.log().add(commitIdObj).call().iterator().next();
+
+                try (TreeWalk treeWalk = new TreeWalk(repository)) {
+                    treeWalk.addTree(commit.getTree());
+                    treeWalk.setRecursive(true);
+
+                    while (treeWalk.next()) {
+                        ObjectId objectId = treeWalk.getObjectId(0);
+                        ObjectLoader loader = repository.open(objectId);
+
+                        String filePath = treeWalk.getPathString();
+                        File outputFile = new File(outputDir, commitId + "_" + filePath.replace("/", "_"));
+                        outputFile.getParentFile().mkdirs(); // Ensure the directory exists
+
+                        try (InputStream stream = new ByteArrayInputStream(loader.getBytes());
+                             FileOutputStream outputStream = new FileOutputStream(outputFile)) {
+                            byte[] buffer = new byte[1024];
+                            int length;
+                            while ((length = stream.read(buffer)) != -1) {
+                                outputStream.write(buffer, 0, length);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (IOException | GitAPIException e) {
+            e.printStackTrace();
+        }
+    }
+}
+```
+
+### `JgitController.java`
+
+```java
+package com.example.demo;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class JgitController {
+
+    @Autowired
+    private GitService gitService;
+
+    @GetMapping("/fetch-files")
+    public void fetchFiles(@RequestParam String outputDir) {
+        gitService.storeFilesFromCommits(outputDir);
+    }
+}
+```
+
+### `Dashboard.java`
+
+```java
+package com.example.demo;
+
+import javax.persistence.Entity;
+import javax.persistence.GeneratedValue;
+import javax.persistence.GenerationType;
+import javax.persistence.Id;
+import javax.persistence.ManyToOne;
+import javax.persistence.JoinColumn;
+import com.fasterxml.jackson.annotation.JsonBackReference;
+
+@Entity
+public class Dashboard {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private String oldCommitId;
+    private String htmlName;
+    private String newCommitId;
+
+    @ManyToOne
+    @JoinColumn(name="script_id")
+    @JsonBackReference
+    private Script script;
+
+    // Getters and setters
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public String getOldCommitId() {
+        return oldCommitId;
+    }
+
+    public void setOldCommitId(String oldCommitId) {
+        this.oldCommitId = oldCommitId;
+    }
+
+    public String getHtmlName() {
+        return htmlName;
+    }
+
+    public void setHtmlName(String htmlName) {
+        this.htmlName = htmlName;
+    }
+
+    public String getNewCommitId() {
+        return newCommitId;
+    }
+
+    public void setNewCommitId(String newCommitId) {
+        this.newCommitId = newCommitId;
+    }
+
+    public Script getScript() {
+        return script;
+    }
+
+    public void setScript(Script script) {
+        this.script = script;
+    }
+}
+```
+
+### `DashboardRepository.java`
+
+```java
+package com.example.demo;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface DashboardRepository extends JpaRepository<Dashboard, Long> {
+}
+```
+
+### Security Configuration
+
+Ensure the security configuration remains as previously defined to secure the endpoint.
+
+#### `WebSecurityConfig.java`
+
+```java
+package com.example.demo;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.provisioning.InMemoryUserDetailsManager;
+
+@Configuration
+@EnableWebSecurity
+public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+        http
+            .authorizeRequests()
+                .antMatchers("/fetch-files").authenticated()
+                .and()
+            .httpBasic();
+    }
+
+    @Bean
+    @Override
+    public UserDetailsService userDetailsService() {
+        UserDetails user = User.withDefaultPasswordEncoder()
+            .username("user")
+            .password("password")
+            .roles("USER")
+            .build();
+
+        return new InMemoryUserDetailsManager(user);
+    }
+}
+```
+
+### Testing with Postman
+
+1. **Start Your Spring Boot Application**
+   Ensure your Spring Boot application is running.
+
+2. **Open Postman**
+   Open Postman to create a new request.
+
+3. **Create a GET Request**
+   - **Method**: GET
+   - **URL**: `http://localhost:8080/fetch-files`
+
+4. **Add Basic Authentication**
+   - Go to the "Authorization" tab.
+   - Select "Basic Auth" from the Type dropdown.
+   - Enter the username (`user`) and password (`password`) defined in the `WebSecurityConfig`.
+
+5. **Add Query Parameters**
+   Click on the "Params" tab and add the following parameter:
+   - **Key**: `outputDir`, **Value**: `C:\\Users\\sous\\Documents\\OutputFolder`
+
+6. **Send the Request**
+   Click on the "Send" button to execute the request.
+
+7. **Check the Output Directory**
+   Verify that the files have been stored in the specified output directory, each file prefixed with its commit ID.
+
+This will fetch all files for each commit ID and store them in the specified output directory without needing to specify individual file paths.
