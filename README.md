@@ -1,4 +1,4 @@
-7⁶y6# Grootan_Coding_WebApplication
+77⁶y6# Grootan_Coding_WebApplication
 Created for webapplication development
 
 This project is developed to design webapplication to upload csv file of more than 1Lakh records with header values and tried to hash the password field. But, hashing the password field is having challenges in the given span of time.
@@ -1920,3 +1920,209 @@ public class JgitController {
 5. Updated the controller to accept `outputDir` as a request parameter.
 
 This will store the file content in the specified directory instead of printing it to the console. Make sure to replace the placeholders with your actual values and test the application thoroughly.
+To fetch files based on multiple commit IDs stored in your database and store them in a specified directory without needing to clone the entire repository, you can use the `LsRemoteCommand` of JGit to list and fetch files from the remote repository directly. Here is the revised approach:
+
+### Step 1: Update the Service
+
+#### `GitService.java`
+
+```java
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.LsRemoteCommand;
+import org.eclipse.jgit.api.errors.GitAPIException;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
+import org.eclipse.jgit.treewalk.TreeWalk;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.List;
+
+@Service
+public class GitService {
+
+    private static final String REMOTE_REPO_URL = "https://github.com/Somutech/Angular-Frontend.git";
+    private static final String REMOTE_USERNAME = "Somutech";
+    private static final String REMOTE_PASSWORD = "S706m0u1@4556";
+
+    @Autowired
+    private DashboardRepository dashboardRepository;
+
+    public void storeFilesFromCommits(String outputDir) {
+        List<Dashboard> dashboards = dashboardRepository.findAll();
+
+        for (Dashboard dashboard : dashboards) {
+            fetchAndStoreFile(dashboard.getNewCommitId(), dashboard.getHtmlName(), outputDir);
+        }
+    }
+
+    private void fetchAndStoreFile(String commitId, String filePath, String outputDir) {
+        try {
+            LsRemoteCommand lsRemote = Git.lsRemoteRepository()
+                    .setRemote(REMOTE_REPO_URL)
+                    .setCredentialsProvider(new UsernamePasswordCredentialsProvider(REMOTE_USERNAME, REMOTE_PASSWORD));
+
+            ObjectId commitIdObj = lsRemote.call().stream()
+                    .filter(ref -> ref.getObjectId().getName().equals(commitId))
+                    .map(ref -> ref.getObjectId())
+                    .findFirst()
+                    .orElse(null);
+
+            if (commitIdObj == null) {
+                System.out.println("Commit ID not found: " + commitId);
+                return;
+            }
+
+            try (Git git = Git.init().call()) {
+                git.fetch()
+                        .setRemote(REMOTE_REPO_URL)
+                        .setCredentialsProvider(new UsernamePasswordCredentialsProvider(REMOTE_USERNAME, REMOTE_PASSWORD))
+                        .call();
+
+                Repository repository = git.getRepository();
+                RevCommit commit = git.log().add(commitIdObj).call().iterator().next();
+
+                try (TreeWalk treeWalk = new TreeWalk(repository)) {
+                    treeWalk.addTree(commit.getTree());
+                    treeWalk.setRecursive(true);
+
+                    boolean fileFound = false;
+
+                    while (treeWalk.next()) {
+                        if (treeWalk.getPathString().equals(filePath)) {
+                            fileFound = true;
+
+                            ObjectId objectId = treeWalk.getObjectId(0);
+                            ObjectLoader loader = repository.open(objectId);
+
+                            File outputFile = new File(outputDir, commitId + "_" + new File(filePath).getName());
+                            try (InputStream stream = new ByteArrayInputStream(loader.getBytes());
+                                 FileOutputStream outputStream = new FileOutputStream(outputFile)) {
+                                byte[] buffer = new byte[1024];
+                                int length;
+                                while ((length = stream.read(buffer)) != -1) {
+                                    outputStream.write(buffer, 0, length);
+                                }
+                            }
+
+                            break;
+                        }
+                    }
+
+                    if (!fileFound) {
+                        System.out.println("File not found: " + filePath);
+                    }
+                }
+            }
+        } catch (IOException | GitAPIException e) {
+            e.printStackTrace();
+        }
+    }
+}
+```
+
+### Step 2: Update the Controller
+
+#### `JgitController.java`
+
+```java
+package com.example.demo;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class JgitController {
+
+    @Autowired
+    private GitService gitService;
+
+    @GetMapping("/fetch-files")
+    public void fetchFiles(@RequestParam String outputDir) {
+        gitService.storeFilesFromCommits(outputDir);
+    }
+}
+```
+
+### Step 3: Security Configuration
+
+Ensure the security configuration remains as previously defined to secure the endpoint.
+
+#### `WebSecurityConfig.java`
+
+```java
+package com.example.demo;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.provisioning.InMemoryUserDetailsManager;
+
+@Configuration
+@EnableWebSecurity
+public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+        http
+            .authorizeRequests()
+                .antMatchers("/fetch-files").authenticated()
+                .and()
+            .httpBasic();
+    }
+
+    @Bean
+    @Override
+    public UserDetailsService userDetailsService() {
+        UserDetails user = User.withDefaultPasswordEncoder()
+            .username("user")
+            .password("password")
+            .roles("USER")
+            .build();
+
+        return new InMemoryUserDetailsManager(user);
+    }
+}
+```
+
+### Step 4: Testing with Postman
+
+1. **Start Your Spring Boot Application**
+   Ensure your Spring Boot application is running.
+
+2. **Open Postman**
+   Open Postman to create a new request.
+
+3. **Create a GET Request**
+   - **Method**: GET
+   - **URL**: `http://localhost:8080/fetch-files`
+
+4. **Add Basic Authentication**
+   - Go to the "Authorization" tab.
+   - Select "Basic Auth" from the Type dropdown.
+   - Enter the username (`user`) and password (`password`) defined in the `WebSecurityConfig`.
+
+5. **Add Query Parameters**
+   Click on the "Params" tab and add the following parameters:
+   - **Key**: `outputDir`, **Value**: `C:\\Users\\sous\\Documents\\OutputFolder`
+
+6. **Send the Request**
+   Click on the "Send" button to execute the request.
+
+7. **Check the Output Directory**
+   Verify that the files have been stored in the specified output directory, each file prefixed with its commit ID.
+
+By following these steps, you can fetch files from a Git repository for multiple commit IDs stored in your database and store them in the specified directory without cloning the entire repository.
